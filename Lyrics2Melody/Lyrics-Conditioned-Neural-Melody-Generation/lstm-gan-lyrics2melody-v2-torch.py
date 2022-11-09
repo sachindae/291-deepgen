@@ -12,11 +12,24 @@ import time
 import datetime
 import shutil
 import mmd
+from tqdm import tqdm
+import random
 
-import models
+from models import Diffusion #, UNet_1D
+from modules import UNet
 
 from torch.utils.data import DataLoader
 from dataset import MIDIDataset 
+
+# Run using the following:
+# python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# Set seed for reproducibility
+torch.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
 
 def main():
     """
@@ -28,13 +41,12 @@ def main():
     '''
 
     # Loading data
-    train = np.load(TRAIN_DATA_MATRIX)          # shape: (11149, 460)
-    validate = np.load(VALIDATE_DATA_MATRIX)    # shape: (1051, 460)
-    test = np.load(TEST_DATA_MATRIX)            # shape: (1051, 460)
+    train = np.load(TRAIN_DATA_MATRIX)
+    validate = np.load(VALIDATE_DATA_MATRIX)
+    test = np.load(TEST_DATA_MATRIX)
 
     print("Training set: ", np.shape(train)[0], " songs, Validation set: ", np.shape(validate)[0], " songs, "
           "Test set: ", np.shape(test)[0], " songs.")
-
 
     # Load datasets
     dataset_train = MIDIDataset(train, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES)
@@ -47,47 +59,61 @@ def main():
     # Epoch counter initialization
     global_step = 0
 
-    # empty lists for saving loss values at the end of each epoch
-    train_g_loss_output = []
-    train_d_loss_output = []
-    valid_g_loss_output = []
-    valid_d_loss_output = []
-
     '''
     Training model: Train the model and output an example midi file at each epoch
     '''
 
-    mmd_pitch_list = []
-    mmd_duration_list = []
-    mmd_rest_list = []
-    MMD_pitch_old = np.inf
-    MMD_duration_old = np.inf
-    MMD_rest_old = np.inf
-    MMD_overall_old = np.inf
-
     num_good_songs_best = 0
     best_epoch = 0
 
-    # Create model
-    model = models.DiffusionModel()
+    ### Hyperparams
+    lr = 3e-4
+
+    #################################
+    #  Create model
+    #################################
+    diffusion = Diffusion()
+    model = UNet().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    mse = torch.nn.MSELoss()
 
     print("global step = ", global_step, "max epoch = ", MAX_EPOCH)
-
     model_stats_saved = []
-
-    for i in range(global_step, MAX_EPOCH):
+    pbar = tqdm(range(global_step, MAX_EPOCH))
+    for epoch in pbar:
 
         # Go through training data
+        model.train()
+        train_loss = 0
         for (midi_tuples, syllable_embs) in dataloader_train:
+            midi_tuples = midi_tuples.to(device)
+
+            t = diffusion.sample_timesteps(midi_tuples.shape[0]).to(device)
+            x_t, noise = diffusion.noise_melodies(midi_tuples, t)
+            predicted_noise = model(x_t, t)
+            loss = mse(noise, predicted_noise)
             
-            # Forward diffusion
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
 
-            pass
+        pbar.set_postfix(MSE=train_loss / len(dataloader_train))
 
-        # Saving models each fifth epoch
-        if i % 5 == 0:
-            pass
-            #print("Saving model")
+        # Sample some melodies and output them
+        if epoch > 390:
+            sampled_melodies = diffusion.sample(model, n=5).cpu().detach()
+            for i,sampled_melody in enumerate(sampled_melodies):
+                # Rearrange tensor to be of shape [melody length, 3]
+                sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
+                denormed_melody = dataset_train.denormalize(sampled_melody)
+                discretized_melody = dataset_train.discretize(denormed_melody)
+                midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
+                destination = f"training_melodies/melody{epoch}.mid"
+                midi_melody.write(destination)
+                print(f'Melody {i}:, {denormed_melody}')
+                #print(f'Discrete Melody {i}:, {discretized_melody}')
+                break
 
     # Save model
 

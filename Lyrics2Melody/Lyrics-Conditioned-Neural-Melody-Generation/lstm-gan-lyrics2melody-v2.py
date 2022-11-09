@@ -12,6 +12,13 @@ import datetime
 import shutil
 import mmd
 
+FILE_SAVE_PATH1 = ".\saved_gan_models\epoch_models\model_epoch"
+FILE_SAVE_PATH2 = ".\saved_gan_models\saved_model"
+FILE_SAVE_PITCH = ".\saved_gan_models\saved_model_best_pitch_mmd"
+FILE_SAVE_DURATION=".\saved_gan_models\saved_model_best_duration_mmd"
+FILE_SAVE_REST = ".\saved_gan_models\saved_model_best_rest_mmd"
+FILE_SAVE_OVERALL = ".\saved_gan_models\saved_model_best_overall_mmd"
+FILE_SAVE_END = ".\saved_gan_models\saved_model_end_of_training"
 
 def make_rnn_cell(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
@@ -610,11 +617,11 @@ def main():
             if i % 5 == 0:
                 print("Saving model")
                 try:
-                    shutil.rmtree("./saved_gan_models/epoch_models/model_epoch" + str(i))
+                    shutil.rmtree(FILE_SAVE_PATH1 + str(i))
                 except:
                     a = 0
                 output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/epoch_models/model_epoch" + str(i))
+                builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_PATH1 + str(i))
                 if CONDITION:
                     builder.add_meta_graph_and_variables(session, [], signature_def_map={
                         "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
@@ -746,11 +753,11 @@ def main():
                 model_stats_saved.append(model_stats)
                 if model_stats['num_good_songs'] > num_good_songs_best:
                     try:
-                        shutil.rmtree("./saved_gan_models/saved_model")
+                        shutil.rmtree(FILE_SAVE_PATH2)
                     except:
                         a = 0
                     output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model")
+                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_PATH2)
                     if CONDITION:
                         builder.add_meta_graph_and_variables(session, [], signature_def_map={
                             "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
@@ -798,11 +805,11 @@ def main():
                 if MMD_pitch < MMD_pitch_old:
                     print("New lowest value of MMD for pitch", MMD_pitch)
                     try:
-                        shutil.rmtree("./saved_gan_models/saved_model_best_pitch_mmd")
+                        shutil.rmtree(FILE_SAVE_PITCH)
                     except:
                         a = 0
                     output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_pitch_mmd")
+                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_PITCH)
                     builder.add_meta_graph_and_variables(session, [], signature_def_map={
                         "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                             inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -818,11 +825,11 @@ def main():
                 if MMD_duration < MMD_duration_old:
                     print("New lowest value of MMD for duration", MMD_duration)
                     try:
-                        shutil.rmtree("./saved_gan_models/saved_model_best_duration_mmd")
+                        shutil.rmtree(FILE_SAVE_DURATION)
                     except:
                         a = 0
                     output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_duration_mmd")
+                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_DURATION)
                     builder.add_meta_graph_and_variables(session, [], signature_def_map={
                         "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                             inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -838,11 +845,11 @@ def main():
                 if MMD_rest < MMD_rest_old:
                     print("New lowest value of MMD for rest", MMD_rest)
                     try:
-                        shutil.rmtree("./saved_gan_models/saved_model_best_rest_mmd")
+                        shutil.rmtree(FILE_SAVE_REST)
                     except:
                         a = 0
                     output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_rest_mmd")
+                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_REST)
                     builder.add_meta_graph_and_variables(session, [], signature_def_map={
                         "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                             inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -858,11 +865,11 @@ def main():
                 if MMD_overall < MMD_overall_old:
                     print("New lowest value of MMD for overall", MMD_overall)
                     try:
-                        shutil.rmtree("./saved_gan_models/saved_model_best_overall_mmd")
+                        shutil.rmtree(FILE_SAVE_OVERALL)
                     except:
                         a = 0
                     output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_overall_mmd")
+                    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_OVERALL)
                     builder.add_meta_graph_and_variables(session, [], signature_def_map={
                         "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                             inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -886,11 +893,11 @@ def main():
                     if MMD_duration < MMD_duration_old:
                         print("New lowest value of MMD for duration", MMD_duration)
                         try:
-                            shutil.rmtree("./saved_gan_models/saved_model_best_duration_mmd")
+                            shutil.rmtree(FILE_SAVE_DURATION)
                         except:
                             a = 0
                         output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_duration_mmd")
+                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_DURATION)
                         builder.add_meta_graph_and_variables(session, [], signature_def_map={
                             "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                                 inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -912,11 +919,11 @@ def main():
                     if MMD_rest < MMD_rest_old:
                         print("New lowest value of MMD for rest", MMD_rest)
                         try:
-                            shutil.rmtree("./saved_gan_models/saved_model_best_rest_mmd")
+                            shutil.rmtree(FILE_SAVE_REST)
                         except:
                             a = 0
                         output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_rest_mmd")
+                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_REST)
                         builder.add_meta_graph_and_variables(session, [], signature_def_map={
                             "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                                 inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -938,11 +945,11 @@ def main():
                     if MMD_rest < MMD_rest_old:
                         print("New lowest value of MMD for rest", MMD_rest)
                         try:
-                            shutil.rmtree("./saved_gan_models/saved_model_best_pitch_mmd")
+                            shutil.rmtree(FILE_SAVE_PITCH)
                         except:
                             a = 0
                         output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_best_pitch_mmd")
+                        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_PITCH)
                         builder.add_meta_graph_and_variables(session, [], signature_def_map={
                             "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
                                 inputs={m.keep_prob.name: m.keep_prob, m.input_songdata.name: m.input_songdata,
@@ -960,11 +967,11 @@ def main():
 
         # Save model
         try:
-            shutil.rmtree("./saved_gan_models/saved_model_end_of_training")
+            shutil.rmtree(FILE_SAVE_END)
         except:
             a = 0
         output = tf.convert_to_tensor(value=m.generated_features, name="output_midi", dtype=tf.float32)
-        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder("./saved_gan_models/saved_model_end_of_training")
+        builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(FILE_SAVE_END)
         if CONDITION:
             builder.add_meta_graph_and_variables(session, [], signature_def_map={
                 "output": tf.compat.v1.saved_model.signature_def_utils.predict_signature_def(
