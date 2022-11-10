@@ -364,14 +364,14 @@ class UNet_wText_OH(nn.Module):
         # concatenate
         t = torch.cat([t, y.to(self.device)], dim=-1)
 
-        print('x:',x.shape)
-        print('t:',t.shape)
+        #print('x:',x.shape)
+        #print('t:',t.shape)
         x1 = self.inc(x)
-        print('x1:',x1.shape)
+        #print('x1:',x1.shape)
         x2 = self.down1(x1, t)
-        print('x2:',x2.shape)
+        #print('x2:',x2.shape)
         x2 = self.sa1(x2)
-        print('sa1 x2:',x2.shape)
+        #print('sa1 x2:',x2.shape)
         x3 = self.down2(x2, t)
         x3 = self.sa2(x3)
 

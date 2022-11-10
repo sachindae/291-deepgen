@@ -27,6 +27,7 @@ from sklearn.preprocessing import OneHotEncoder
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEST_MIDI_FILE = "valid_melodies\melody{epoch}-{sample_num}.mid"
 
 # Set seed for reproducibility
 torch.manual_seed(0)
@@ -85,7 +86,8 @@ def main():
     #################################
     #  Create model
     #################################
-    diffusion = Diffusion(device=device)
+    #diffusion = Diffusion(device=device)
+    diffusion = Diffusion(device=device, melody_len=636)
     #model = UNet(device=device).to(device)
     #model = UNet_wText(device=device).to(device)
     model = UNet_wText_OH(device=device).to(device)
@@ -124,15 +126,24 @@ def main():
                 syllable_embs = syllable_embs.to(device)
                 sampled_melodies = diffusion.sample_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
                 for i,sampled_melody in enumerate(sampled_melodies):
+                    sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).reshape((1,636*3))
+                    sampled_melody = dataset_valid_OH.inverse(sampled_melody).reshape(20,3)
+                    midi_melody = dataset_valid_OH.create_midi_pattern_from_discretized_data(sampled_melody)
+                    destination = DEST_MIDI_FILE.format(epoch=epoch, sample_num=sample_num)
+                    midi_melody.write(destination)
+                    print(f'Melody {sample_num}:, {sampled_melody}')
+                    
+                    """
                     # Rearrange tensor to be of shape [melody length, 3]
                     sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
-                    denormed_melody = dataset_train.denormalize(sampled_melody)
+                    denormed_melody = dataset_valid.denormalize(sampled_melody)
                     discretized_melody = dataset_train.discretize(denormed_melody)
                     midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
-                    destination = f"valid_melodies\melody{epoch}-{sample_num}.mid"
+                    destination = DEST_MIDI_FILE.format(epoch=epoch, sample_num=sample_num)
                     midi_melody.write(destination)
                     print(f'Melody {sample_num}:, {denormed_melody}')
                     #print(f'Discrete Melody {i}:, {discretized_melody}')
+                    """
                     sample_num += 1
                     break
 

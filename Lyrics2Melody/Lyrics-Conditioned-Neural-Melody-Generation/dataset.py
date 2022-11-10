@@ -169,3 +169,23 @@ class MIDIDataset_OH(Dataset):
     
     def inverse(self, d_midi_oh):
         return self.enc.inverse_transform(d_midi_oh)
+
+    def create_midi_pattern_from_discretized_data(self, discretized_sample):
+        new_midi = pretty_midi.PrettyMIDI()
+        voice = pretty_midi.Instrument(1)  # It's here to change the used instruments !
+        tempo = 120
+        ActualTime = 0  # Time since the beginning of the song, in seconds
+        for i in range(0,len(discretized_sample)):
+            length = discretized_sample[i][1] * 60 / tempo  # Conversion Duration to Time
+            if i < len(discretized_sample) - 1:
+                gap = discretized_sample[i + 1][2] * 60 / tempo
+            else:
+                gap = 0  # The Last element doesn't have a gap
+            note = pretty_midi.Note(velocity=100, pitch=int(discretized_sample[i][0]), start=ActualTime,
+                                    end=ActualTime + length)
+            voice.notes.append(note)
+            ActualTime += length + gap  # Update of the time
+
+        new_midi.instruments.append(voice)
+
+        return new_midi
