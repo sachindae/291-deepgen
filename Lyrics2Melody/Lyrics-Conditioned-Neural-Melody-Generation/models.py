@@ -24,7 +24,7 @@ class Diffusion():
     def noise_melodies(self, x, t):
         sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t])[:, None, None, None]
         sqrt_one_minus_alpha_hat = torch.sqrt(1 - self.alpha_hat[t])[:, None, None, None]
-        eps = torch.randn_like(x)
+        eps = torch.randn_like(x, device=self.device)
         x_t = sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * eps
         return x_t.float(), eps.float()
 

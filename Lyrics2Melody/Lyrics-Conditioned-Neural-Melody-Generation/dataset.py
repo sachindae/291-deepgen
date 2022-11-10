@@ -11,6 +11,7 @@ import utils
 import midi
 import pretty_midi
 
+
 class MIDIDataset(Dataset):
 
     def __init__(self, data, MIDI_TUPLE_SIZE, SONG_LENGTH, SYLLABLE_EMB_DIM):
@@ -130,3 +131,41 @@ class MIDIDataset(Dataset):
         new_midi.instruments.append(voice)
 
         return new_midi
+    
+class MIDIDataset_OH(Dataset):
+
+    def __init__(self, data, MIDI_TUPLE_SIZE, SONG_LENGTH, SYLLABLE_EMB_DIM, enc):
+        '''
+        data: [N, SONG_LENGTH * (MIDI_TUPLE_SIZE + SYLLABLE_EMB DIM)] matrix
+              where N is number of data, SONG_LENGTH is number
+              of notes in song, and SYLLABLE_EMB_DIM dim is dimensionality
+              of syllable embeddings. First SONG_LENGTH * MIDI_TUPLE_SIZE elements
+              correspond to the MIDI tuples, remaining elements
+              correspond to syllable embeddings of paired lyrics
+        '''
+
+        self.MIDI_TUPLE_SIZE = MIDI_TUPLE_SIZE
+        self.SONG_LENGTH = SONG_LENGTH
+        self.SYLLABLE_EMB_DIM = SYLLABLE_EMB_DIM    
+
+        # Go through data splitting MIDI tuples and paired lyrics (syllable embeddings)
+        self.samples = []
+        self.enc = enc
+        d_midi = data[:, :MIDI_TUPLE_SIZE*SONG_LENGTH]
+        d_syl = data[:, MIDI_TUPLE_SIZE*SONG_LENGTH:]
+        d_midi_oh = self.enc.transform(d_midi).toarray()
+        
+        for m, s in zip(d_midi_oh, d_syl):
+            m = np.expand_dims(m.reshape(636,3).transpose(1,0),axis=1) 
+            self.samples.append((m,s))
+
+        print(f'Num samples: {len(self.samples)}')
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+    
+    def inverse(self, d_midi_oh):
+        return self.enc.inverse_transform(d_midi_oh)

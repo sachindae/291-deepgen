@@ -16,10 +16,12 @@ from tqdm import tqdm
 import random
 
 from models import Diffusion #, UNet_1D
-from modules import UNet, UNet_wText
+from modules import UNet, UNet_wText, UNet_wText_OH
 
 from torch.utils.data import DataLoader
-from dataset import MIDIDataset 
+from dataset import MIDIDataset, MIDIDataset_OH
+
+from sklearn.preprocessing import OneHotEncoder
 
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
@@ -49,13 +51,24 @@ def main():
           "Test set: ", np.shape(test)[0], " songs.")
 
     # Load datasets
+    """
     dataset_train = MIDIDataset(train, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES)
     dataset_valid = MIDIDataset(validate, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES)
     dataset_test = MIDIDataset(test, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES)
     dataloader_train = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True)
     dataloader_valid = DataLoader(dataset_valid, batch_size=BATCH_SIZE, shuffle=True)
     dataloader_test = DataLoader(dataset_valid, batch_size=BATCH_SIZE, shuffle=True)
-
+    """
+    enc = OneHotEncoder(handle_unknown='ignore')
+    enc.fit(train[:, :NUM_MIDI_FEATURES*SONGLENGTH])
+    
+    dataset_train_OH = MIDIDataset_OH(train, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES, enc)
+    dataset_valid_OH = MIDIDataset_OH(validate, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES, enc)
+    dataset_test_OH = MIDIDataset_OH(test, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES, enc)
+    dataloader_train = DataLoader(dataset_train_OH, batch_size=BATCH_SIZE, shuffle=True)
+    dataloader_valid = DataLoader(dataset_valid_OH, batch_size=BATCH_SIZE, shuffle=True)
+    dataloader_test = DataLoader(dataset_valid_OH, batch_size=BATCH_SIZE, shuffle=True)
+    
     # Epoch counter initialization
     global_step = 0
 
@@ -72,9 +85,10 @@ def main():
     #################################
     #  Create model
     #################################
-    diffusion = Diffusion()
-    #model = UNet().to(device)
-    model = UNet_wText().to(device)
+    diffusion = Diffusion(device=device)
+    #model = UNet(device=device).to(device)
+    #model = UNet_wText(device=device).to(device)
+    model = UNet_wText_OH(device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse = torch.nn.MSELoss()
 
@@ -105,20 +119,21 @@ def main():
 
         # Sample some melodies and output them
         if epoch > 391:
+            sample_num = 0
             for (midi_tuples, syllable_embs) in dataloader_valid:
                 syllable_embs = syllable_embs.to(device)
                 sampled_melodies = diffusion.sample_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
-                
                 for i,sampled_melody in enumerate(sampled_melodies):
                     # Rearrange tensor to be of shape [melody length, 3]
                     sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
                     denormed_melody = dataset_train.denormalize(sampled_melody)
                     discretized_melody = dataset_train.discretize(denormed_melody)
                     midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
-                    destination = f"valid_melodies\melody{epoch}-{i}.mid"
+                    destination = f"valid_melodies\melody{epoch}-{sample_num}.mid"
                     midi_melody.write(destination)
-                    print(f'Melody {i}:, {denormed_melody}')
+                    print(f'Melody {sample_num}:, {denormed_melody}')
                     #print(f'Discrete Melody {i}:, {discretized_melody}')
+                    sample_num += 1
                     break
 
     # Save model
