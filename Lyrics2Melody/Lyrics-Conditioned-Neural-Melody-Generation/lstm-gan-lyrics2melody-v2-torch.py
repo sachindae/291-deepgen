@@ -16,7 +16,7 @@ from tqdm import tqdm
 import random
 
 from models import Diffusion #, UNet_1D
-from modules import UNet
+from modules import UNet, UNet_wText
 
 from torch.utils.data import DataLoader
 from dataset import MIDIDataset 
@@ -73,7 +73,8 @@ def main():
     #  Create model
     #################################
     diffusion = Diffusion()
-    model = UNet().to(device)
+    #model = UNet().to(device)
+    model = UNet_wText().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse = torch.nn.MSELoss()
 
@@ -87,10 +88,12 @@ def main():
         train_loss = 0
         for (midi_tuples, syllable_embs) in dataloader_train:
             midi_tuples = midi_tuples.to(device)
+            syllable_embs = syllable_embs.to(device)
 
             t = diffusion.sample_timesteps(midi_tuples.shape[0]).to(device)
             x_t, noise = diffusion.noise_melodies(midi_tuples, t)
-            predicted_noise = model(x_t, t)
+            predicted_noise = model(x_t, t, syllable_embs)
+            #predicted_noise = model(x_t, t)
             loss = mse(noise, predicted_noise)
             
             optimizer.zero_grad()
@@ -101,19 +104,22 @@ def main():
         pbar.set_postfix(MSE=train_loss / len(dataloader_train))
 
         # Sample some melodies and output them
-        if epoch > 390:
-            sampled_melodies = diffusion.sample(model, n=5).cpu().detach()
-            for i,sampled_melody in enumerate(sampled_melodies):
-                # Rearrange tensor to be of shape [melody length, 3]
-                sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
-                denormed_melody = dataset_train.denormalize(sampled_melody)
-                discretized_melody = dataset_train.discretize(denormed_melody)
-                midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
-                destination = f"training_melodies/melody{epoch}.mid"
-                midi_melody.write(destination)
-                print(f'Melody {i}:, {denormed_melody}')
-                #print(f'Discrete Melody {i}:, {discretized_melody}')
-                break
+        if epoch > 391:
+            for (midi_tuples, syllable_embs) in dataloader_valid:
+                syllable_embs = syllable_embs.to(device)
+                sampled_melodies = diffusion.sample_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
+                
+                for i,sampled_melody in enumerate(sampled_melodies):
+                    # Rearrange tensor to be of shape [melody length, 3]
+                    sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
+                    denormed_melody = dataset_train.denormalize(sampled_melody)
+                    discretized_melody = dataset_train.discretize(denormed_melody)
+                    midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
+                    destination = f"valid_melodies\melody{epoch}-{i}.mid"
+                    midi_melody.write(destination)
+                    print(f'Melody {i}:, {denormed_melody}')
+                    #print(f'Discrete Melody {i}:, {discretized_melody}')
+                    break
 
     # Save model
 

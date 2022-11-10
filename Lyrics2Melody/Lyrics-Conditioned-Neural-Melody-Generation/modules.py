@@ -118,7 +118,7 @@ class Down(nn.Module):
         x = self.m1(x)
         x = self.m2(x)
         x = self.m3(x)
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        emb = self.emb_layer(t.float())[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
         return x + emb
 
 
@@ -144,7 +144,7 @@ class Up(nn.Module):
         x = self.up(x)
         x = torch.cat([skip_x, x], dim=1)
         x = self.conv(x)
-        emb = self.emb_layer(t)[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
+        emb = self.emb_layer(t.float())[:, :, None, None].repeat(1, 1, x.shape[-2], x.shape[-1])
         return x + emb
 
 
@@ -268,6 +268,62 @@ class UNet_conditional(nn.Module):
         output = self.outc(x)
         return output
 
+class UNet_wText(nn.Module):
+    def __init__(self, c_in=3, c_out=3, time_dim=256, text_dim = 400, device="cuda"):
+        super().__init__()
+        self.device = device
+        self.time_dim = time_dim
+        self.text_dim = text_dim
+        self.inc = DoubleConv(c_in, 32)
+        self.down1 = Down(32, 64, emb_dim=time_dim+text_dim)
+        self.sa1 = SelfAttention(64, 10)
+        self.down2 = Down(64, 64, emb_dim=time_dim+text_dim)
+        self.sa2 = SelfAttention(64, 5)
+
+        self.bot1 = DoubleConv(64, 128)
+        self.bot2 = DoubleConv(128, 128)
+        self.bot3 = DoubleConv(128, 64)
+
+        self.up1 = Up(128, 64, emb_dim=time_dim+text_dim)
+        self.sa4 = SelfAttention(64, 10)
+        self.up2 = Up(96, 32, emb_dim=time_dim+text_dim)
+        self.sa5 = SelfAttention(32, 20)
+        self.outc = nn.Conv2d(32, c_out, kernel_size=1)
+
+    def pos_encoding(self, t, channels):
+        inv_freq = 1.0 / (
+            10000
+            ** (torch.arange(0, channels, 2, device=self.device).float() / channels)
+        )
+        pos_enc_a = torch.sin(t.repeat(1, channels // 2) * inv_freq)
+        pos_enc_b = torch.cos(t.repeat(1, channels // 2) * inv_freq)
+        pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
+        return pos_enc
+
+    def forward(self, x, t, y):
+        t = t.unsqueeze(-1).type(torch.float)
+        t = self.pos_encoding(t, self.time_dim)
+        
+        # concatenate
+        t = torch.cat([t, y.to(self.device)], dim=-1)
+
+        x1 = self.inc(x)
+        x2 = self.down1(x1, t)
+        x2 = self.sa1(x2)
+        x3 = self.down2(x2, t)
+        x3 = self.sa2(x3)
+
+        x3 = self.bot1(x3)
+        x3 = self.bot2(x3)
+        x3 = self.bot3(x3)
+
+        x = self.up1(x3, x2, t)
+        x = self.sa4(x)
+        x = self.up2(x, x1, t)
+        x = self.sa5(x)
+
+        output = self.outc(x)
+        return output
 
 if __name__ == '__main__':
     # net = UNet(device="cpu")
