@@ -22,12 +22,13 @@ from torch.utils.data import DataLoader
 from dataset import MIDIDataset, MIDIDataset_OH
 
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.impute import SimpleImputer
 
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-DEST_MIDI_FILE = "valid_melodies\melody{epoch}-{sample_num}.mid"
+DEST_MIDI_FILE = "valid_melodies/melody{epoch}-{sample_num}.mid"
 
 # Set seed for reproducibility
 torch.manual_seed(0)
@@ -62,6 +63,8 @@ def main():
     """
     enc = OneHotEncoder(handle_unknown='ignore')
     enc.fit(train[:, :NUM_MIDI_FEATURES*SONGLENGTH])
+    imputer = SimpleImputer(strategy='most_frequent')
+    imputer.fit(train[:, :NUM_MIDI_FEATURES*SONGLENGTH])
     
     dataset_train_OH = MIDIDataset_OH(train, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES, enc)
     dataset_valid_OH = MIDIDataset_OH(validate, NUM_MIDI_FEATURES, SONGLENGTH, NUM_SYLLABLE_FEATURES, enc)
@@ -120,14 +123,16 @@ def main():
         pbar.set_postfix(MSE=train_loss / len(dataloader_train))
 
         # Sample some melodies and output them
-        if epoch > 391:
+        if epoch > 391 or epoch % 10 ==0:
             sample_num = 0
             for (midi_tuples, syllable_embs) in dataloader_valid:
                 syllable_embs = syllable_embs.to(device)
                 sampled_melodies = diffusion.sample_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
                 for i,sampled_melody in enumerate(sampled_melodies):
                     sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).reshape((1,636*3))
-                    sampled_melody = dataset_valid_OH.inverse(sampled_melody).reshape(20,3)
+                    sampled_melody = dataset_valid_OH.inverse(sampled_melody)
+                    sampled_melody = np.array(sampled_melody, dtype=np.float64)
+                    sampled_melody = imputer.transform(sampled_melody).reshape(20,3)
                     midi_melody = dataset_valid_OH.create_midi_pattern_from_discretized_data(sampled_melody)
                     destination = DEST_MIDI_FILE.format(epoch=epoch, sample_num=sample_num)
                     midi_melody.write(destination)
