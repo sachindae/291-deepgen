@@ -16,10 +16,13 @@ from tqdm import tqdm
 import random
 
 from models import Diffusion #, UNet_1D
-from modules import UNet, UNet_wText
+from dilated import DiffWave
+from modules import UNet
 
 from torch.utils.data import DataLoader
 from dataset import MIDIDataset 
+
+import matplotlib.pyplot as plt
 
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
@@ -30,6 +33,17 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
+
+# Function to save model
+def save_model(epoch_num, mod, opt):
+
+    # Save model
+    root_model_path = 'trained_models/model_epoch' + str(epoch_num) + '.pt'
+    model_dict = mod.state_dict()
+    state_dict = {'model': model_dict, 'optimizer': opt.state_dict()}
+    torch.save(state_dict, root_model_path)
+
+    print('Saved model')
 
 def main():
     """
@@ -67,16 +81,25 @@ def main():
     best_epoch = 0
 
     ### Hyperparams
-    lr = 3e-4
+    input_size = 1
+    lr = 9e-4
 
     #################################
     #  Create model
     #################################
     diffusion = Diffusion()
-    #model = UNet().to(device)
-    model = UNet_wText().to(device)
+    model = DiffWave().to(device) #UNet().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse = torch.nn.MSELoss()
+
+    # Load previous model if flag used
+    load = False
+    if load:
+        model_name = 'trained_models/model_epoch4000.pt'
+        state_dict = torch.load(model_name)
+        model.load_state_dict(state_dict['model'])
+        optimizer.load_state_dict(state_dict['optimizer'])
+        print('Model loaded!', model_name)
 
     print("global step = ", global_step, "max epoch = ", MAX_EPOCH)
     model_stats_saved = []
@@ -88,12 +111,13 @@ def main():
         train_loss = 0
         for (midi_tuples, syllable_embs) in dataloader_train:
             midi_tuples = midi_tuples.to(device)
-            syllable_embs = syllable_embs.to(device)
+            midi_tuples = midi_tuples.squeeze(2)
 
             t = diffusion.sample_timesteps(midi_tuples.shape[0]).to(device)
-            x_t, noise = diffusion.noise_melodies(midi_tuples, t)
-            predicted_noise = model(x_t, t, syllable_embs)
-            #predicted_noise = model(x_t, t)
+            #x_t, noise = diffusion.noise_melodies(midi_tuples, t)
+            x_t, noise = diffusion.noise_melodies_1d(midi_tuples, t)
+            predicted_noise = model(x_t, t)
+            
             loss = mse(noise, predicted_noise)
             
             optimizer.zero_grad()
@@ -104,22 +128,17 @@ def main():
         pbar.set_postfix(MSE=train_loss / len(dataloader_train))
 
         # Sample some melodies and output them
-        if epoch > 391:
-            for (midi_tuples, syllable_embs) in dataloader_valid:
-                syllable_embs = syllable_embs.to(device)
-                sampled_melodies = diffusion.sample_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
-                
-                for i,sampled_melody in enumerate(sampled_melodies):
-                    # Rearrange tensor to be of shape [melody length, 3]
-                    sampled_melody = sampled_melody.transpose(1, 0)[0].transpose(1, 0).numpy()
-                    denormed_melody = dataset_train.denormalize(sampled_melody)
-                    discretized_melody = dataset_train.discretize(denormed_melody)
-                    midi_melody = dataset_train.create_midi_pattern_from_discretized_data(discretized_melody)
-                    destination = f"valid_melodies\melody{epoch}-{i}.mid"
-                    midi_melody.write(destination)
-                    print(f'Melody {i}:, {denormed_melody}')
-                    #print(f'Discrete Melody {i}:, {discretized_melody}')
-                    break
+        if epoch % 50 == 0:
+            #sampled_melodies = diffusion.sample(model, n=5).cpu().detach()
+            sampled_melodies = diffusion.sample_1d(model, n=5).cpu().detach()
+            for i,sampled_melody in enumerate(sampled_melodies):
+                sampled_melody = sampled_melody.transpose(1, 0).numpy() # -> [melody len, 3]
+                denormed_melody = dataset_train.denormalize(sampled_melody)
+                midi_melody = dataset_train.create_midi_pattern_from_discretized_data(denormed_melody)
+                destination = f"training_melodies/melody{epoch}.mid"
+                print(f'Melody {i}:, {denormed_melody}')
+                midi_melody.write(destination)
+                break
 
     # Save model
 

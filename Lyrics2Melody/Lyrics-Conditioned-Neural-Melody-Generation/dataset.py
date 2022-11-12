@@ -11,6 +11,8 @@ import utils
 import midi
 import pretty_midi
 
+import matplotlib.pyplot as plt
+
 class MIDIDataset(Dataset):
 
     def __init__(self, data, MIDI_TUPLE_SIZE, SONG_LENGTH, SYLLABLE_EMB_DIM):
@@ -31,6 +33,31 @@ class MIDIDataset(Dataset):
         self.MIDI_VAL_MAX = 127
         self.DUR_MAX = 32
         self.REST_MAX = 32
+
+        # Mean center the data
+        #print('DATA SHAPE:', data.shape)
+        #print(data[0, 0:60:3])
+        #print(data[0, 1:60:3])
+        #print(data[0, 2:60:3])
+        #means, stds, ch_minmaxes = [], [], []
+        #for channel in range(3):
+        #    channel_data = data[:,channel:60:3]
+        #    means.append(channel_data.mean())
+        #    stds.append(channel_data.std())
+        #    data[:,channel:60:3] = (channel_data - means[-1]) #/ stds[-1]
+        #    ch_min, ch_max = data[:,channel:60:3].min(), data[:,channel:60:3].max()
+        #    ch_minmaxes.append((ch_min, ch_max))
+        #    data[:,channel:60:3] = (data[:,channel:60:3] - ch_min) / (ch_max - ch_min)
+        #    data[:,channel:60:3] = 2 * data[:,channel:60:3] - 1
+        #self.means = means
+        #self.stds = stds
+        #self.ch_minmaxes = ch_minmaxes
+        #print(means)
+        #print(stds)
+        #print(ch_minmaxes)
+        #print(data[0, 0:60:3])
+        #print(data[0, 1:60:3])
+        #print(data[0, 2:60:3])
 
         # Go through data splitting MIDI tuples and paired lyrics (syllable embeddings)
         self.samples = []
@@ -77,6 +104,26 @@ class MIDIDataset(Dataset):
         midi_tuples[:, 0] = (midi_tuples[:, 0] + 1) / 2 * self.MIDI_VAL_MAX
         midi_tuples[:, 1] = (midi_tuples[:, 1] + 1) / 2 * self.DUR_MAX
         midi_tuples[:, 2] = (midi_tuples[:, 2] + 1) / 2 * self.REST_MAX
+
+        return midi_tuples
+
+    def decenter(self, midi_tuples):
+        '''
+        De-mean centers the data 
+        '''
+        
+        for channel,(mean, std) in enumerate(zip(self.means, self.stds)):
+            midi_tuples[:, channel] = midi_tuples[:, channel] + mean
+
+        return midi_tuples
+
+    def deminmax(self, midi_tuples):
+        '''
+        De-mean centers the data 
+        '''
+        
+        for channel,(ch_min, ch_max) in enumerate(self.ch_minmaxes):
+            midi_tuples[:, channel] = (midi_tuples[:, channel] + 1) / 2 * (ch_max - ch_min) + ch_min
 
         return midi_tuples
 
