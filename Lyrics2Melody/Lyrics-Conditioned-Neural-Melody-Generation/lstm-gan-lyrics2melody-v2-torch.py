@@ -24,6 +24,8 @@ from dataset import MIDIDataset
 
 import matplotlib.pyplot as plt
 
+import midi_statistics
+
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
 
@@ -36,6 +38,8 @@ np.random.seed(0)
 
 # Function to save model
 def save_model(epoch_num, mod, opt):
+
+    epoch_num = epoch_num + 1550
 
     # Save model
     root_model_path = 'trained_models/model_epoch' + str(epoch_num) + '.pt'
@@ -95,7 +99,7 @@ def main():
     # Load previous model if flag used
     load = False
     if load:
-        model_name = 'trained_models/model_epoch4000.pt'
+        model_name = 'trained_models/model_epoch1550.pt'
         state_dict = torch.load(model_name)
         model.load_state_dict(state_dict['model'])
         optimizer.load_state_dict(state_dict['optimizer'])
@@ -133,12 +137,24 @@ def main():
             sampled_melodies = diffusion.sample_1d(model, n=5).cpu().detach()
             for i,sampled_melody in enumerate(sampled_melodies):
                 sampled_melody = sampled_melody.transpose(1, 0).numpy() # -> [melody len, 3]
-                denormed_melody = dataset_train.denormalize(sampled_melody)
+                denormed_melody = dataset_train.denormalize2(sampled_melody)
+
+
+                #denormed_melody = np.concatenate((denormed_melody, np.ones(denormed_melody.shape), np.zeros(denormed_melody.shape)), axis=1)
+                denormed_melody = dataset_train.discretize(denormed_melody)
                 midi_melody = dataset_train.create_midi_pattern_from_discretized_data(denormed_melody)
                 destination = f"training_melodies/melody{epoch}.mid"
                 print(f'Melody {i}:, {denormed_melody}')
                 midi_melody.write(destination)
+  
+                tuned_melody = midi_statistics.tune_song(denormed_melody)
+                midi_melody_tuned = dataset_train.create_midi_pattern_from_discretized_data(tuned_melody)
+                destination = f"training_melodies/melody{epoch}_tuned.mid"
+                midi_melody_tuned.write(destination)
+
                 break
+
+            save_model(epoch, model, optimizer)
 
     # Save model
 

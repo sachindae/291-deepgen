@@ -61,15 +61,27 @@ class MIDIDataset(Dataset):
 
         # Go through data splitting MIDI tuples and paired lyrics (syllable embeddings)
         self.samples = []
+        k = 0
         for d in data:
-
+            k += 1
             # Separate data vector into MIDI tuples and syllable embeddings 
             midi_tuples = np.array(np.split(d[:MIDI_TUPLE_SIZE*SONG_LENGTH], SONG_LENGTH))
             syllable_embs = d[MIDI_TUPLE_SIZE*SONG_LENGTH:]
 
+            # Store some training MIDI files
+            if k < 100:
+                midi_melody = self.create_midi_pattern_from_discretized_data(midi_tuples)
+                destination = f"training_melodies/test{k}.mid"
+                midi_melody.write(destination)
+
             # Normalize MIDI tuples (0-127, 0-32, 0-32) to [-1, 1]
-            midi_tuples = self.normalize(midi_tuples).transpose(1, 0)
+            midi_tuples = self.normalize2(midi_tuples).transpose(1, 0)
             midi_tuples = np.expand_dims(midi_tuples, axis=1)
+            
+            # 1 channel version
+            #midi_tuples = np.expand_dims(midi_tuples[0], axis=0)
+            #midi_tuples = np.expand_dims(midi_tuples, axis=0)
+            #print('new shape:', midi_tuples.shape)
 
             # Create sample
             sample = (midi_tuples, syllable_embs)
@@ -95,6 +107,18 @@ class MIDIDataset(Dataset):
 
         return midi_tuples
 
+    def normalize2(self, midi_tuples):
+        '''
+        Normalizes MIDI tuples to [-1, 1] range
+        midi_tuples: [melody length, 3]
+        '''
+
+        midi_tuples[:, 0] = ((midi_tuples[:, 0] / self.MIDI_VAL_MAX) - 0.5) / 0.5
+        midi_tuples[:, 1] = ((midi_tuples[:, 1] / self.DUR_MAX) - 0.5) / 0.5
+        midi_tuples[:, 2] = ((midi_tuples[:, 2] / self.REST_MAX) - 0.5) / 0.5
+
+        return midi_tuples
+
     def denormalize(self, midi_tuples):
         '''
         Denormalizes MIDI tuples to original range
@@ -104,6 +128,18 @@ class MIDIDataset(Dataset):
         midi_tuples[:, 0] = (midi_tuples[:, 0] + 1) / 2 * self.MIDI_VAL_MAX
         midi_tuples[:, 1] = (midi_tuples[:, 1] + 1) / 2 * self.DUR_MAX
         midi_tuples[:, 2] = (midi_tuples[:, 2] + 1) / 2 * self.REST_MAX
+
+        return midi_tuples
+
+    def denormalize2(self, midi_tuples):
+        '''
+        Denormalizes MIDI tuples to original range
+        midi_tuples: [melody length, 3]
+        '''
+
+        midi_tuples[:, 0] = (midi_tuples[:, 0] * 0.5 + 0.5) * self.MIDI_VAL_MAX
+        midi_tuples[:, 1] = (midi_tuples[:, 1] * 0.5 + 0.5) * self.DUR_MAX
+        midi_tuples[:, 2] = (midi_tuples[:, 2] * 0.5 + 0.5) * self.REST_MAX
 
         return midi_tuples
 
