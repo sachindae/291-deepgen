@@ -75,3 +75,22 @@ class Diffusion():
         model.train()
         x = x.clamp(-1, 1)
         return x
+    
+    def sample_1d_wText(self, model, y, n):
+        model.eval()
+        with torch.no_grad():
+            x = torch.randn((n, 3, self.melody_len)).to(self.device)
+            for i in reversed(range(1, self.noise_steps)):
+                t = (torch.ones(n) * i).long().to(self.device)
+                predicted_noise = model(x, t, y)
+                alpha = self.alpha[t][:, None, None]
+                alpha_hat = self.alpha_hat[t][:, None, None]
+                beta = self.beta[t][:, None, None]
+                if i > 1:
+                    noise = torch.randn_like(x)
+                else:
+                    noise = torch.zeros_like(x)
+                x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
+        model.train()
+        x = x.clamp(-1, 1)
+        return x

@@ -16,7 +16,7 @@ from tqdm import tqdm
 import random
 
 from models import Diffusion #, UNet_1D
-from dilated import DiffWave
+from dilated import DiffWave, DiffWave_wText
 from modules import UNet
 
 from torch.utils.data import DataLoader
@@ -31,18 +31,70 @@ import midi_statistics
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+TRAINEDMODEL = "trained_models\model_epoch{epoch}.pt"
+TRAININGMELODY = "training_melodies\melody{epoch}"
+
+lyrics_list = [[['Then','Then'],['the','the'],['rain','rainstorm'],['storm','rainstorm'],['came','came'],
+          ['ov','over'],['er','over'],['me','me'],['and','and'],['i','i'],['felt','felt'],['my','my'],
+          ['spi','spirit'],['rit','spirit'],['break','break']],
+          [['E','Everywhere'],['very','Everywhere'],['where','Everywhere'],['I','I'],['look','look'],
+         ['I','I'],['found','found'],['you','you'],['look','looking'],['king','looking'],['back','back']],
+            [['Must','Must'],['have','have'],['been','been'],['love','love'],
+          ['but','but'],['its','its'],['o','over'],['ver','over'],['now','now'],['lay','lay'],['a','a'],
+          ['whis','whisper'],['per','whisper'],['on','on'],['my','my'],['pil','pillow'],['low','pillow']],
+            [['You','You'],['turn','turn'],['my','my'],['nights','nights'],
+          ['in','into'],['to','into'],['days','days'],['Lead','Lead'],['me','me'],['mys','mysterious'],['te','mysterious'],
+          ['ri','mysterious'],['ous','mysterious'],['ways','ways']]]
+
+syll_model_path = '.\enc_models\syllEncoding_20190419.bin'
+word_model_path = '.\enc_models\wordLevelEncoder_20190419.bin'
+syllModel = Word2Vec.load(syll_model_path)
+wordModel = Word2Vec.load(word_model_path)
+
 # Set seed for reproducibility
 torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
 
+def lyrics_encode(lyr_list):
+    enc_lyr = []
+    
+    for lyrics in lyr_list:
+        length_song = len(lyrics)
+        cond = []
+        
+        for i in range(20):
+            if i < length_song:
+                syll2Vec = syllModel.wv[lyrics[i][0]]
+                word2Vec = wordModel.wv[lyrics[i][1]]
+                cond.append(np.concatenate((syll2Vec,word2Vec)))
+            else:
+                cond.append(np.concatenate((syll2Vec,word2Vec)))
+        
+        
+        flattened_cond = []
+        for x in cond:
+            for y in x:
+                flattened_cond.append(y)
+        enc_lyr.append(flattened_cond)
+    return np.array(enc_lyr)
+
+def lyrics_to_sentence(lyr):
+    # input: [['Then','Then'],['the','the'],['rain','rainstorm'],['storm','rainstorm'],['came','came'],
+    #          ['ov','over'],['er','over'],['me','me'],['and','and'],['i','i'],['felt','felt'],['my','my'],
+    #          ['spi','spirit'],['rit','spirit'],['break','break']],
+    # output: Then the rainstorm came over me and i felt my spirit break
+    sentence = ""
+    for w, s in lyr:
+        sentence += w + " "
+    return sentence
+
 # Function to save model
 def save_model(epoch_num, mod, opt):
 
-    epoch_num = epoch_num + 1550
-
     # Save model
-    root_model_path = 'trained_models/model_epoch' + str(epoch_num) + '.pt'
+    root_model_path = TRAINEDMODEL.format(epoch=str(epoch_num))
+    print(root_model_path)
     model_dict = mod.state_dict()
     state_dict = {'model': model_dict, 'optimizer': opt.state_dict()}
     torch.save(state_dict, root_model_path)
@@ -92,14 +144,15 @@ def main():
     #  Create model
     #################################
     diffusion = Diffusion()
-    model = DiffWave().to(device) #UNet().to(device)
+    #model = DiffWave().to(device) #UNet().to(device)
+    model = DiffWave_wText(device=device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse = torch.nn.MSELoss()
 
     # Load previous model if flag used
     load = False
     if load:
-        model_name = 'trained_models/model_epoch1550.pt'
+        model_name = TRAINEDMODEL.format(epoch=1550)
         state_dict = torch.load(model_name)
         model.load_state_dict(state_dict['model'])
         optimizer.load_state_dict(state_dict['optimizer'])
@@ -120,7 +173,8 @@ def main():
             t = diffusion.sample_timesteps(midi_tuples.shape[0]).to(device)
             #x_t, noise = diffusion.noise_melodies(midi_tuples, t)
             x_t, noise = diffusion.noise_melodies_1d(midi_tuples, t)
-            predicted_noise = model(x_t, t)
+            #predicted_noise = model(x_t, t)
+            predicted_noise = model(x_t, t, syllable_embs.to(device))
             
             loss = mse(noise, predicted_noise)
             
@@ -134,7 +188,10 @@ def main():
         # Sample some melodies and output them
         if epoch % 50 == 0:
             #sampled_melodies = diffusion.sample(model, n=5).cpu().detach()
-            sampled_melodies = diffusion.sample_1d(model, n=5).cpu().detach()
+            #sampled_melodies = diffusion.sample_1d(model, n=5).cpu().detach()
+            sample_lyrics = torch.Tensor(lyrics_encode(lyrics_list)).to(device)
+            #sampled_melodies = diffusion.sample_1d_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
+            sampled_melodies = diffusion.sample_1d_wText(model, sample_lyrics, n=sample_lyrics.shape[0]).cpu().detach()
             for i,sampled_melody in enumerate(sampled_melodies):
                 sampled_melody = sampled_melody.transpose(1, 0).numpy() # -> [melody len, 3]
                 denormed_melody = dataset_train.denormalize2(sampled_melody)
@@ -143,16 +200,14 @@ def main():
                 #denormed_melody = np.concatenate((denormed_melody, np.ones(denormed_melody.shape), np.zeros(denormed_melody.shape)), axis=1)
                 denormed_melody = dataset_train.discretize(denormed_melody)
                 midi_melody = dataset_train.create_midi_pattern_from_discretized_data(denormed_melody)
-                destination = f"training_melodies/melody{epoch}.mid"
-                print(f'Melody {i}:, {denormed_melody}')
+                destination = TRAININGMELODY.format(epoch=epoch)+str(i)+".mid"
+                print(f'Melody {i}, Lyrics = {lyrics_to_sentence(lyrics_list[i])} \n {denormed_melody}')
                 midi_melody.write(destination)
   
                 tuned_melody = midi_statistics.tune_song(denormed_melody)
                 midi_melody_tuned = dataset_train.create_midi_pattern_from_discretized_data(tuned_melody)
-                destination = f"training_melodies/melody{epoch}_tuned.mid"
+                destination = TRAININGMELODY.format(epoch=epoch)+str(i)+"_tuned.mid"
                 midi_melody_tuned.write(destination)
-
-                break
 
             save_model(epoch, model, optimizer)
 
