@@ -44,6 +44,7 @@ FILE_SAVE_OVERALL = ".\saved_models\saved_model_best_overall_mmd"
 FILE_SAVE_BLEU = ".\saved_models\saved_model_best_bleu_sum"
 FILE_SAVE_END = ".\saved_models\saved_model_end_of_training"
 DATA_SAVE_METRIC = ".\data\metric.pkl"
+DATA_SAVE_STATS = ".\data\stats.pkl"
 SONGLENGTH = 20
 NUM_MIDI_FEATURES = 3
 
@@ -209,9 +210,6 @@ def main():
     model_stats_saved = []
     pbar = tqdm(range(global_step, MAX_EPOCH))
     
-
-    model_stats_saved = []
-
     for epoch in pbar:
 
         # Go through training data
@@ -270,6 +268,8 @@ def main():
 
         with open(DATA_SAVE_METRIC, 'wb') as file:
             pickle.dump(metrics, file)
+        with open(DATA_SAVE_STATS, 'wb') as file:
+            pickle.dump(model_stats_saved, file)
             
     save_model(model, optimizer, FILE_SAVE_END)
     
