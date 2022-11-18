@@ -25,6 +25,7 @@ from dataset import MIDIDataset
 import matplotlib.pyplot as plt
 
 import midi_statistics
+from torchtext.data.metrics import bleu_score
 
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
@@ -39,6 +40,7 @@ FILE_SAVE_PITCH = ".\saved_models\saved_model_best_pitch_mmd"
 FILE_SAVE_DURATION=".\saved_models\saved_model_best_duration_mmd"
 FILE_SAVE_REST = ".\saved_models\saved_model_best_rest_mmd"
 FILE_SAVE_OVERALL = ".\saved_models\saved_model_best_overall_mmd"
+FILE_SAVE_BLEU = ".\saved_models\saved_model_best_bleu_sum"
 FILE_SAVE_END = ".\saved_models\saved_model_end_of_training"
 SONGLENGTH = 20
 NUM_MIDI_FEATURES = 3
@@ -382,6 +384,22 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         best['MMD_overall_old'] = MMD_overall
         save_song(dataset, validation_songs[0], FILE_SAVE_OVERALL+str(epoch)+"_"+str(0)+".mid")
         save_song(dataset, validation_songs[1], FILE_SAVE_OVERALL+str(epoch)+"_"+str(1)+".mid")
+    
+    #get bleu
+    val_dat_pitches = np.expand_dims(val_dat_pitches,axis=1)
+    val_dat_duration = np.expand_dims(val_dat_duration,axis=1)
+    val_dat_rests = np.expand_dims(val_dat_rests,axis=1)
+    bleu_pitches = bleu_score(val_gen_pitches.astype(str), val_dat_pitches.astype(str))
+    bleu_duration = bleu_score(val_gen_duration.astype(str), val_dat_duration.astype(str))
+    bleu_rests = bleu_score(val_gen_rests.astype(str), val_dat_rests.astype(str))
+    bleu_sum = bleu_pitches + bleu_duration + bleu_rests
+    print(f"BLEU: pitch - {bleu_pitches}, duration - {bleu_duration}, rests - {bleu_rests}, sum - {bleu_sum}")  
+    if bleu_sum > best['BLEU']:
+        print("New BLEU sum", bleu_sum)
+        save_model(model, optimizer, FILE_SAVE_BLEU)
+        best['BLEU'] = bleu_sum
+        save_song(dataset, validation_songs[0], FILE_SAVE_BLEU+str(epoch)+"_"+str(0)+".mid")
+        save_song(dataset, validation_songs[1], FILE_SAVE_BLEU+str(epoch)+"_"+str(1)+".mid")        
     
     return best
     
