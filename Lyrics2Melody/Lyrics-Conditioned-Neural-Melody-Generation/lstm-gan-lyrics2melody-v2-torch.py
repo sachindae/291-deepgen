@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 
 import midi_statistics
 from torchtext.data.metrics import bleu_score
+import pickle
 
 # Run using the following:
 # python lstm-gan-lyrics2melody-v2-torch.py --settings_file settings
@@ -42,6 +43,7 @@ FILE_SAVE_REST = ".\saved_models\saved_model_best_rest_mmd"
 FILE_SAVE_OVERALL = ".\saved_models\saved_model_best_overall_mmd"
 FILE_SAVE_BLEU = ".\saved_models\saved_model_best_bleu_sum"
 FILE_SAVE_END = ".\saved_models\saved_model_end_of_training"
+DATA_SAVE_METRIC = ".\data\metric.pkl"
 SONGLENGTH = 20
 NUM_MIDI_FEATURES = 3
 
@@ -163,11 +165,22 @@ def main():
     best['num_good_songs_best'] = 0
     best['best_epoch'] = 0
     best['MMD_pitch_old'] = np.inf
-    best['MMD_pitch_old'] = np.inf
     best['MMD_duration_old'] = np.inf
     best['MMD_rest_old'] = np.inf
     best['MMD_overall_old'] = np.inf
     best['BLEU'] = 0
+    
+    metrics = {}
+    metrics['num_good_songs'] = []
+    metrics['MMD_pitch'] = []
+    metrics['MMD_duration'] = []
+    metrics['MMD_rest'] = []
+    metrics['MMD_overall'] = []
+    metrics['BLEU_pitch'] = []
+    metrics['BLEU_duration'] = []
+    metrics['BLEU_rest'] = []
+    metrics['BLEU_sum'] = []
+    metrics['mse'] = []
 
 
     ### Hyperparams
@@ -248,10 +261,18 @@ def main():
 
             save_model(model, optimizer, TRAINEDMODEL.format(epoch=str(epoch)))
             
-            model_stats, validation_songs = get_model_stats(model, diffusion, dataloader_valid, dataset_valid)
-            model_stats_saved.append(model_stats)
-            best = save_best_models(best, epoch, model_stats, validation_songs, validate, dataset_valid, model, optimizer)
+        
+        # do it every epoch - takes long!!!    
+        model_stats, validation_songs = get_model_stats(model, diffusion, dataloader_valid, dataset_valid)
+        model_stats_saved.append(model_stats)
+        best, metrics = save_best_models(best, metrics, epoch, model_stats, validation_songs, validate, dataset_valid, model, optimizer)
+        metrics['mse'].append(train_loss)
 
+        with open(DATA_SAVE_METRIC, 'wb') as file:
+            pickle.dump(metrics, file)
+            
+    save_model(model, optimizer, FILE_SAVE_END)
+    
     return 0
 
 def get_model_stats(model, diffusion, dataloader, dataset):
@@ -318,8 +339,9 @@ def save_song(dataset, song, filename):
     midi_melody.write(filename)
     return 0
     
-def save_best_models(best, epoch, model_stats, validation_songs, validate, dataset, model, optimizer):
-        
+def save_best_models(best, metrics, epoch, model_stats, validation_songs, validate, dataset, model, optimizer):
+
+    metrics['num_good_songs'].append(model_stats['num_good_songs'])        
     if model_stats['num_good_songs'] > best['num_good_songs_best']:
         save_model(model, optimizer, FILE_SAVE_SAVE)
         print('NEW MODEL SAVED!\n')
@@ -350,6 +372,7 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         val_dat_rests[:, i] = np.array(validate)[:, NUM_MIDI_FEATURES * i + 2]
 
     MMD_pitch = mmd.Compute_MMD(val_gen_pitches, val_dat_pitches)
+    metrics['MMD_pitch'].append(MMD_pitch)
     print("MMD pitch:", MMD_pitch)
     if MMD_pitch < best['MMD_pitch_old']:
         print("New lowest value of MMD for pitch", MMD_pitch)
@@ -359,6 +382,7 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         save_song(dataset, validation_songs[1], FILE_SAVE_PITCH+str(epoch)+"_"+str(1)+".mid")
 
     MMD_duration = mmd.Compute_MMD(val_gen_duration,val_dat_duration)
+    metrics['MMD_duration'].append(MMD_duration)
     print("MMD duration:", MMD_duration)
     if MMD_duration < best['MMD_duration_old']:
         print("New lowest value of MMD for duration", MMD_duration)
@@ -368,6 +392,7 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         save_song(dataset, validation_songs[1], FILE_SAVE_DURATION+str(epoch)+"_"+str(1)+".mid")
 
     MMD_rest = mmd.Compute_MMD(val_gen_rests,val_dat_rests)
+    metrics['MMD_rest'].append(MMD_rest)
     print("MMD rest:", MMD_rest)
     if MMD_rest < best['MMD_rest_old']:
         print("New lowest value of MMD for rest", MMD_rest)
@@ -377,6 +402,7 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         save_song(dataset, validation_songs[1], FILE_SAVE_REST+str(epoch)+"_"+str(1)+".mid")
 
     MMD_overall = MMD_rest + MMD_duration + MMD_pitch
+    metrics['MMD_overall'].append(MMD_overall)
     print("MMD overall:", MMD_overall)
     if MMD_overall < best['MMD_overall_old']:
         print("New lowest value of MMD for overall", MMD_overall)
@@ -393,6 +419,10 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
     bleu_duration = bleu_score(val_gen_duration.astype(str), val_dat_duration.astype(str))
     bleu_rests = bleu_score(val_gen_rests.astype(str), val_dat_rests.astype(str))
     bleu_sum = bleu_pitches + bleu_duration + bleu_rests
+    metrics['BLEU_pitch'].append(bleu_pitches)
+    metrics['BLEU_duration'].append(bleu_duration)
+    metrics['BLEU_rest'].append(bleu_rests)
+    metrics['BLEU_sum'].append(bleu_sum)
     print(f"BLEU: pitch - {bleu_pitches}, duration - {bleu_duration}, rests - {bleu_rests}, sum - {bleu_sum}")  
     if bleu_sum > best['BLEU']:
         print("New BLEU sum", bleu_sum)
@@ -401,7 +431,7 @@ def save_best_models(best, epoch, model_stats, validation_songs, validate, datas
         save_song(dataset, validation_songs[0], FILE_SAVE_BLEU+str(epoch)+"_"+str(0)+".mid")
         save_song(dataset, validation_songs[1], FILE_SAVE_BLEU+str(epoch)+"_"+str(1)+".mid")        
     
-    return best
+    return best, metrics
     
 
 if __name__ == '__main__':
