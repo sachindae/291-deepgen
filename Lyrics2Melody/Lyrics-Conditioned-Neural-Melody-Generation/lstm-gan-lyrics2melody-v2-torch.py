@@ -33,7 +33,17 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 TRAINEDMODEL = "trained_models\model_epoch{epoch}.pt"
 TRAININGMELODY = "training_melodies\melody{epoch}"
+FILE_SAVE_EPOCH = ".\saved_models\epoch_models\model_epoch"
+FILE_SAVE_SAVE = ".\saved_models\saved_model"
+FILE_SAVE_PITCH = ".\saved_models\saved_model_best_pitch_mmd"
+FILE_SAVE_DURATION=".\saved_models\saved_model_best_duration_mmd"
+FILE_SAVE_REST = ".\saved_models\saved_model_best_rest_mmd"
+FILE_SAVE_OVERALL = ".\saved_models\saved_model_best_overall_mmd"
+FILE_SAVE_END = ".\saved_models\saved_model_end_of_training"
+SONGLENGTH = 20
+NUM_MIDI_FEATURES = 3
 
+"""
 lyrics_list = [[['Then','Then'],['the','the'],['rain','rainstorm'],['storm','rainstorm'],['came','came'],
           ['ov','over'],['er','over'],['me','me'],['and','and'],['i','i'],['felt','felt'],['my','my'],
           ['spi','spirit'],['rit','spirit'],['break','break']],
@@ -45,6 +55,21 @@ lyrics_list = [[['Then','Then'],['the','the'],['rain','rainstorm'],['storm','rai
             [['You','You'],['turn','turn'],['my','my'],['nights','nights'],
           ['in','into'],['to','into'],['days','days'],['Lead','Lead'],['me','me'],['mys','mysterious'],['te','mysterious'],
           ['ri','mysterious'],['ous','mysterious'],['ways','ways']]]
+
+"""
+lyrics_list = [
+    [['I','I'],['wan','wanna'],['na','wanna'],['feel','feel'],['like','like'],['strand','stranded'],['ed','stranded'],['You','You'],['left','left'],['me','me'],
+     ['a','alone'],['lone','alone'],['I','I'],['can','can'],['take','take'],['it','it'],['no','no'],['more','more'],['I','I'],['wish','wish']],
+    [['here','here'],['by','by'],['my','my'],['side','side'],['I','I'],['re','remember'],['mem','remember'],['ber','remember'],['those','those'],['days','days'],
+     ['when','when'],['it','it'],['was','was'], ['a','a'], ['time','time'] , ['if','if'], ['I','I'], ['could','could'], ['right','right'], ['the','the']],
+    [['Good','Goodbye'],['bye','Goodbye'],['Nor','Norma'],['ma','Norma'],['Jean','Jean'],['Though','Though'],['I','I'],['knew','knew'],['you','you'],['at','at'],
+     ['al','all'],['l','all'],['You','You'],['had','had'],['the','the'],['grace','grace'],['hold','hold'],['your','yourself'],['self','yourself'],['While','While']],
+    [['out','out'],['in','in'],['to','to'],['your','your'],['bra','brain'],['in','brain'],['They','They'],['set','set'],['you','you'],['on','on'],
+     ['the','the'],['tread','treadmill'],['mill','treadmill'],['And','And'],['they','they'],['made','made'],['you','you'],['change','change'],['your','your'],['And','And']],
+    [['So', 'So'],['I', 'I'],['m', 'm'],['gon', 'gonna'],['na', 'gonna'],['love', 'love'],['you', 'you'],['like', 'like'],['I', 'I'],['m', 'm'],
+     ['gon', 'gonna'],['na', 'gonna'], ['lose', 'lose'],['you', 'you'],['I', 'I'],['m', 'm'],['gon', 'gonna'],['na', 'gonna'],['hold', 'hold'],['you', 'you']]
+    ]
+ 
 
 syll_model_path = '.\enc_models\syllEncoding_20190419.bin'
 word_model_path = '.\enc_models\wordLevelEncoder_20190419.bin'
@@ -90,10 +115,9 @@ def lyrics_to_sentence(lyr):
     return sentence
 
 # Function to save model
-def save_model(epoch_num, mod, opt):
+def save_model(mod, opt, root_model_path):
 
     # Save model
-    root_model_path = TRAINEDMODEL.format(epoch=str(epoch_num))
     print(root_model_path)
     model_dict = mod.state_dict()
     state_dict = {'model': model_dict, 'optimizer': opt.state_dict()}
@@ -133,8 +157,16 @@ def main():
     Training model: Train the model and output an example midi file at each epoch
     '''
 
-    num_good_songs_best = 0
-    best_epoch = 0
+    best = {}
+    best['num_good_songs_best'] = 0
+    best['best_epoch'] = 0
+    best['MMD_pitch_old'] = np.inf
+    best['MMD_pitch_old'] = np.inf
+    best['MMD_duration_old'] = np.inf
+    best['MMD_rest_old'] = np.inf
+    best['MMD_overall_old'] = np.inf
+    best['BLEU'] = 0
+
 
     ### Hyperparams
     input_size = 1
@@ -161,6 +193,10 @@ def main():
     print("global step = ", global_step, "max epoch = ", MAX_EPOCH)
     model_stats_saved = []
     pbar = tqdm(range(global_step, MAX_EPOCH))
+    
+
+    model_stats_saved = []
+
     for epoch in pbar:
 
         # Go through training data
@@ -196,7 +232,6 @@ def main():
                 sampled_melody = sampled_melody.transpose(1, 0).numpy() # -> [melody len, 3]
                 denormed_melody = dataset_train.denormalize2(sampled_melody)
 
-
                 #denormed_melody = np.concatenate((denormed_melody, np.ones(denormed_melody.shape), np.zeros(denormed_melody.shape)), axis=1)
                 denormed_melody = dataset_train.discretize(denormed_melody)
                 midi_melody = dataset_train.create_midi_pattern_from_discretized_data(denormed_melody)
@@ -209,12 +244,147 @@ def main():
                 destination = TRAININGMELODY.format(epoch=epoch)+str(i)+"_tuned.mid"
                 midi_melody_tuned.write(destination)
 
-            save_model(epoch, model, optimizer)
-
-    # Save model
+            save_model(model, optimizer, TRAINEDMODEL.format(epoch=str(epoch)))
+            
+            model_stats, validation_songs = get_model_stats(model, diffusion, dataloader_valid, dataset_valid)
+            model_stats_saved.append(model_stats)
+            best = save_best_models(best, epoch, model_stats, validation_songs, validate, dataset_valid, model, optimizer)
 
     return 0
 
+def get_model_stats(model, diffusion, dataloader, dataset):
+        
+    model_stats = {}
+    model_stats['stats_scale_tot'] = 0
+    model_stats['stats_repetitions_2_tot'] = 0
+    model_stats['stats_repetitions_3_tot'] = 0
+    model_stats['stats_span_tot'] = 0
+    model_stats['stats_unique_tones_tot'] = 0
+    model_stats['stats_avg_rest_tot'] = 0
+    model_stats['num_of_null_rest_tot'] = 0
+    model_stats['best_scale_score'] = 0
+    model_stats['best_repetitions_2'] = 0
+    model_stats['best_repetitions_3'] = 0
+    model_stats['num_perfect_scale'] = 0
+    model_stats['num_good_songs'] = 0
+    
+    validation_songs = []
+    for (midi_tuples, syllable_embs) in dataloader:
+        #midi_tuples = midi_tuples.to(device)
+        #midi_tuples = midi_tuples.squeeze(2)
+
+        sampled_melodies = diffusion.sample_1d_wText(model, syllable_embs, n=syllable_embs.shape[0]).cpu().detach()
+        
+        for i, sampled_melody in enumerate(sampled_melodies):
+            sampled_melody = sampled_melody.transpose(1, 0).numpy() # -> [melody len, 3]
+            denormed_melody = dataset.denormalize2(sampled_melody)
+
+            #denormed_melody = np.concatenate((denormed_melody, np.ones(denormed_melody.shape), np.zeros(denormed_melody.shape)), axis=1)
+            denormed_melody = dataset.discretize(denormed_melody)
+            tuned_melody = midi_statistics.tune_song(denormed_melody)
+
+            validation_songs.append(tuned_melody)
+
+            stats = midi_statistics.get_all_stats(tuned_melody)
+            model_stats['stats_scale_tot'] += stats['scale_score']
+            model_stats['stats_repetitions_2_tot'] += float(stats['repetitions_2'])
+            model_stats['stats_repetitions_3_tot'] += float(stats['repetitions_3'])
+            model_stats['stats_unique_tones_tot'] += float(stats['tones_unique'])
+            model_stats['stats_span_tot'] += stats['tone_span']
+            model_stats['stats_avg_rest_tot'] += stats['average_rest']
+            model_stats['num_of_null_rest_tot'] += stats['num_null_rest']
+            model_stats['best_scale_score'] = max(stats['scale_score'], model_stats['best_scale_score'])
+            model_stats['best_repetitions_2'] = max(stats['repetitions_2'], model_stats['best_repetitions_2'])
+            model_stats['best_repetitions_3'] = max(stats['repetitions_3'], model_stats['best_repetitions_3'])
+
+            # if stats['scale_score'] == 1.0:
+            #    model_stats['num_perfect_scale'] += 1
+
+            if stats['scale_score'] == 1.0 and stats['tones_unique'] > 3 \
+               and stats['tone_span'] > 4 and stats['num_null_rest'] > 8 and stats['tone_span'] < 13\
+               and stats['repetitions_2'] > 4:
+                model_stats['num_good_songs'] += 1
+    print(validation_songs[0])
+    print(validation_songs[1])
+    
+    print(model_stats)
+    return model_stats, validation_songs
+
+
+def save_song(dataset, song, filename):
+    midi_melody = dataset.create_midi_pattern_from_discretized_data(song)
+    midi_melody.write(filename)
+    return 0
+    
+def save_best_models(best, epoch, model_stats, validation_songs, validate, dataset, model, optimizer):
+        
+    if model_stats['num_good_songs'] > best['num_good_songs_best']:
+        save_model(model, optimizer, FILE_SAVE_SAVE)
+        print('NEW MODEL SAVED!\n')
+        best['best_epoch'] = epoch
+        # np.save('saved_model/train_data.npy', train)
+        # np.save('saved_model/valid_data.npy', validate)
+        # np.save('saved_model/test_data.npy', test)
+        best['num_good_songs_best'] = model_stats['num_good_songs']
+
+    print('Best ratio of good songs, ', best['num_good_songs_best'], ' at epoch', best['best_epoch'])
+
+    print("MMD2=========================================================================================\n")
+    val_gen_pitches = np.zeros((np.shape(validation_songs)[0],SONGLENGTH))
+    val_dat_pitches = np.zeros((np.shape(validate)[0],SONGLENGTH))
+    val_gen_duration = np.zeros((np.shape(validation_songs)[0],SONGLENGTH))
+    val_dat_duration = np.zeros((np.shape(validate)[0],SONGLENGTH))
+    val_gen_rests = np.zeros((np.shape(validation_songs)[0],SONGLENGTH))
+    val_dat_rests = np.zeros((np.shape(validate)[0],SONGLENGTH))
+
+    print(np.shape(validation_songs), np.shape(val_gen_pitches))
+
+    for i in range(SONGLENGTH):
+        val_gen_pitches[:, i] = np.array(validation_songs)[:, i, 0]
+        val_gen_duration[:, i] = np.array(validation_songs)[:, i, 1]
+        val_gen_rests[:, i] = np.array(validation_songs)[:, i, 2]
+        val_dat_pitches[:, i] = np.array(validate)[:, NUM_MIDI_FEATURES * i]
+        val_dat_duration[:, i] = np.array(validate)[:, NUM_MIDI_FEATURES * i + 1]
+        val_dat_rests[:, i] = np.array(validate)[:, NUM_MIDI_FEATURES * i + 2]
+
+    MMD_pitch = mmd.Compute_MMD(val_gen_pitches, val_dat_pitches)
+    print("MMD pitch:", MMD_pitch)
+    if MMD_pitch < best['MMD_pitch_old']:
+        print("New lowest value of MMD for pitch", MMD_pitch)
+        save_model(model, optimizer, FILE_SAVE_PITCH)
+        best['MMD_pitch_old'] = MMD_pitch
+        save_song(dataset, validation_songs[0], FILE_SAVE_PITCH+str(epoch)+"_"+str(0)+".mid")
+        save_song(dataset, validation_songs[1], FILE_SAVE_PITCH+str(epoch)+"_"+str(1)+".mid")
+
+    MMD_duration = mmd.Compute_MMD(val_gen_duration,val_dat_duration)
+    print("MMD duration:", MMD_duration)
+    if MMD_duration < best['MMD_duration_old']:
+        print("New lowest value of MMD for duration", MMD_duration)
+        save_model(model, optimizer, FILE_SAVE_DURATION)
+        best['MMD_duration_old'] = MMD_duration
+        save_song(dataset, validation_songs[0], FILE_SAVE_DURATION+str(epoch)+"_"+str(0)+".mid")
+        save_song(dataset, validation_songs[1], FILE_SAVE_DURATION+str(epoch)+"_"+str(1)+".mid")
+
+    MMD_rest = mmd.Compute_MMD(val_gen_rests,val_dat_rests)
+    print("MMD rest:", MMD_rest)
+    if MMD_rest < best['MMD_rest_old']:
+        print("New lowest value of MMD for rest", MMD_rest)
+        save_model(model, optimizer, FILE_SAVE_REST)
+        best['MMD_rest_old'] = MMD_rest
+        save_song(dataset, validation_songs[0], FILE_SAVE_REST+str(epoch)+"_"+str(0)+".mid")
+        save_song(dataset, validation_songs[1], FILE_SAVE_REST+str(epoch)+"_"+str(1)+".mid")
+
+    MMD_overall = MMD_rest + MMD_duration + MMD_pitch
+    print("MMD overall:", MMD_overall)
+    if MMD_overall < best['MMD_overall_old']:
+        print("New lowest value of MMD for overall", MMD_overall)
+        save_model(model, optimizer, FILE_SAVE_OVERALL)
+        best['MMD_overall_old'] = MMD_overall
+        save_song(dataset, validation_songs[0], FILE_SAVE_OVERALL+str(epoch)+"_"+str(0)+".mid")
+        save_song(dataset, validation_songs[1], FILE_SAVE_OVERALL+str(epoch)+"_"+str(1)+".mid")
+    
+    return best
+    
 
 if __name__ == '__main__':
 
