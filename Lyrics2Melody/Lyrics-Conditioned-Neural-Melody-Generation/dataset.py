@@ -66,7 +66,7 @@ class MIDIDataset(Dataset):
 
             # Normalize MIDI tuples (0-127, 0-32, 0-32) to [-1, 1]
             midi_tuples = self.normalize2(midi_tuples).transpose(1, 0)
-            midi_tuples = midi_tuples.transpose(1, 0)
+#            midi_tuples = midi_tuples.transpose(1, 0)
             midi_tuples = np.expand_dims(midi_tuples, axis=1)
 
             # Create sample
