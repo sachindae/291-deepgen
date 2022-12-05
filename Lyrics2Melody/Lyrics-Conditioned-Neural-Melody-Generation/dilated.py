@@ -247,6 +247,9 @@ class DiffWave_wText(nn.Module):
     if self.spectrogram_upsampler: # use conditional model
       spectrogram = self.spectrogram_upsampler(spectrogram)
 
+    if text_emb == None:
+      text_emb = torch.zeros((diffusion_step.shape[0], 400)).float()
+
     diffusion_step = torch.cat([diffusion_step.to(self.device), text_emb.to(self.device)], dim=-1).float()
     
     skip = None

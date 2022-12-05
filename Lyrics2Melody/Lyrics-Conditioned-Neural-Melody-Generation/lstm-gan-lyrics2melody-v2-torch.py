@@ -15,9 +15,9 @@ import mmd
 from tqdm import tqdm
 import random
 
-from models import Diffusion #, UNet_1D
+from models import Diffusion, LSTMNet, LSTMNet_wText
 from dilated import DiffWave, DiffWave_wText
-from modules import UNet
+from modules import UNet, UNet_wText
 
 from torch.utils.data import DataLoader
 from dataset import MIDIDataset 
@@ -185,7 +185,7 @@ def main():
 
 
     ### Hyperparams
-    input_size = 1
+    input_size = 3
     lr = 9e-4
 
     #################################
@@ -194,6 +194,10 @@ def main():
     diffusion = Diffusion()
     #model = DiffWave().to(device) #UNet().to(device)
     model = DiffWave_wText(device=device).to(device)
+    #model = LSTMNet(input_size).to(device)
+    #model = LSTMNet_wText(input_size).to(device)
+    #model = UNet().to(device)
+    #model = UNet_wText().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse = torch.nn.MSELoss()
 

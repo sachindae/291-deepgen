@@ -35,29 +35,19 @@ class MIDIDataset(Dataset):
         self.REST_MAX = 32
 
         # Mean center the data
-        #print('DATA SHAPE:', data.shape)
-        #print(data[0, 0:60:3])
-        #print(data[0, 1:60:3])
-        #print(data[0, 2:60:3])
-        #means, stds, ch_minmaxes = [], [], []
-        #for channel in range(3):
-        #    channel_data = data[:,channel:60:3]
-        #    means.append(channel_data.mean())
-        #    stds.append(channel_data.std())
-        #    data[:,channel:60:3] = (channel_data - means[-1]) #/ stds[-1]
-        #    ch_min, ch_max = data[:,channel:60:3].min(), data[:,channel:60:3].max()
-        #    ch_minmaxes.append((ch_min, ch_max))
-        #    data[:,channel:60:3] = (data[:,channel:60:3] - ch_min) / (ch_max - ch_min)
-        #    data[:,channel:60:3] = 2 * data[:,channel:60:3] - 1
-        #self.means = means
-        #self.stds = stds
-        #self.ch_minmaxes = ch_minmaxes
-        #print(means)
-        #print(stds)
-        #print(ch_minmaxes)
-        #print(data[0, 0:60:3])
-        #print(data[0, 1:60:3])
-        #print(data[0, 2:60:3])
+        # means, stds, ch_minmaxes = [], [], []
+        # for channel in range(3):
+        #     channel_data = data[:,channel:60:3]
+        #     means.append(channel_data.mean())
+        #     stds.append(channel_data.std())
+        #     data[:,channel:60:3] = (channel_data - means[-1]) / stds[-1]
+        #     ch_min, ch_max = data[:,channel:60:3].min(), data[:,channel:60:3].max()
+        #     ch_minmaxes.append((ch_min, ch_max))
+        #     data[:,channel:60:3] = (data[:,channel:60:3] - ch_min) / (ch_max - ch_min)
+        #     data[:,channel:60:3] = 2 * data[:,channel:60:3] - 1
+        # self.means = means
+        # self.stds = stds
+        # self.ch_minmaxes = ch_minmaxes
 
         # Go through data splitting MIDI tuples and paired lyrics (syllable embeddings)
         self.samples = []
@@ -72,16 +62,12 @@ class MIDIDataset(Dataset):
             if k < 100:
                 midi_melody = self.create_midi_pattern_from_discretized_data(midi_tuples)
                 destination = f"training_melodies/test{k}.mid"
-                midi_melody.write(destination)
+                #midi_melody.write(destination)
 
             # Normalize MIDI tuples (0-127, 0-32, 0-32) to [-1, 1]
             midi_tuples = self.normalize2(midi_tuples).transpose(1, 0)
+            midi_tuples = midi_tuples.transpose(1, 0)
             midi_tuples = np.expand_dims(midi_tuples, axis=1)
-            
-            # 1 channel version
-            #midi_tuples = np.expand_dims(midi_tuples[0], axis=0)
-            #midi_tuples = np.expand_dims(midi_tuples, axis=0)
-            #print('new shape:', midi_tuples.shape)
 
             # Create sample
             sample = (midi_tuples, syllable_embs)
@@ -149,7 +135,7 @@ class MIDIDataset(Dataset):
         '''
         
         for channel,(mean, std) in enumerate(zip(self.means, self.stds)):
-            midi_tuples[:, channel] = midi_tuples[:, channel] + mean
+            midi_tuples[:, channel] = std*midi_tuples[:, channel] + mean
 
         return midi_tuples
 

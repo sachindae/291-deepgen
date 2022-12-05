@@ -183,6 +183,8 @@ class UNet(nn.Module):
         t = t.unsqueeze(-1).type(torch.float)
         t = self.pos_encoding(t, self.time_dim)
         
+        x = x.unsqueeze(2)
+
         x1 = self.inc(x)
         x2 = self.down1(x1, t)
         x2 = self.sa1(x2)
@@ -199,6 +201,9 @@ class UNet(nn.Module):
         x = self.sa5(x)
 
         output = self.outc(x)
+
+        output = output.squeeze()
+
         return output
 
 
@@ -304,6 +309,8 @@ class UNet_wText(nn.Module):
         t = t.unsqueeze(-1).type(torch.float)
         t = self.pos_encoding(t, self.time_dim)
         
+        x = x.unsqueeze(2)
+
         # concatenate
         t = torch.cat([t, y.to(self.device)], dim=-1)
 
@@ -323,6 +330,7 @@ class UNet_wText(nn.Module):
         x = self.sa5(x)
 
         output = self.outc(x)
+        output = output.squeeze()
         return output
 
 if __name__ == '__main__':
