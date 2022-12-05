@@ -1,6 +1,13 @@
 # 291-deepgen
 
+## Code References
+https://github.com/lucidrains/denoising-diffusion-pytorch  
+https://github.com/lmnt-com/diffwave  
+https://github.com/sebasgverde/music-geometry-eval  
+https://github.com/yy1lab/Lyrics-Conditioned-Neural-Melody-Generation
+
 ## Test Samples (Vocals synthesized from MIDI using Synthesizer V)
+
 ### Sample 1 : "Gonna be a mighty king so enemies zazuwell never seen a king of beasts with"
 * LSTM-GAN: 
 
